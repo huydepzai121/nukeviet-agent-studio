@@ -4,14 +4,14 @@ export const WORKFLOW_ID = 'nukeviet-module'
 export const MAX_ATTEMPTS = 2
 
 export const WORKFLOW_NODES: WorkflowNodeDef[] = [
-  { id: 'analyze', kind: 'step', agent: 'analyst', x: 0, y: 70 },
-  { id: 'theme', kind: 'step', agent: 'theme', x: 268, y: 70 },
-  { id: 'scaffold', kind: 'step', agent: 'module', x: 536, y: 70 },
-  { id: 'backend', kind: 'step', agent: 'backend', x: 804, y: 70 },
-  { id: 'lang', kind: 'step', agent: 'i18n', x: 1072, y: 70 },
-  { id: 'gate', kind: 'gate', agent: 'decision-gate', x: 1340, y: 70 },
-  { id: 'review', kind: 'step', agent: 'review', x: 1620, y: 0 },
-  { id: 'fix', kind: 'step', agent: 'fix', x: 1620, y: 168 },
+  { id: 'analyze', kind: 'step', agent: 'analyst', x: 0, y: 0 },
+  { id: 'theme', kind: 'step', agent: 'theme', x: 292, y: 0 },
+  { id: 'scaffold', kind: 'step', agent: 'module', x: 0, y: 168 },
+  { id: 'backend', kind: 'step', agent: 'backend', x: 292, y: 168 },
+  { id: 'lang', kind: 'step', agent: 'i18n', x: 0, y: 336 },
+  { id: 'gate', kind: 'gate', agent: 'decision-gate', x: 292, y: 336 },
+  { id: 'review', kind: 'step', agent: 'review', x: 584, y: 292 },
+  { id: 'fix', kind: 'step', agent: 'fix', x: 584, y: 444 },
 ]
 
 export const WORKFLOW_EDGES: WorkflowEdgeDef[] = [

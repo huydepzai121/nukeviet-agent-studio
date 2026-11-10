@@ -3,17 +3,17 @@
 @theme {
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
-  --color-canvas: #0b0c0e;
-  --color-panel: #111216;
-  --color-panel-2: #17181d;
-  --color-ink: #e8e9ee;
-  --color-mute: #9b9da8;
-  --color-faint: #6c6e7a;
-  --color-line: #262830;
-  --color-ok: #3ecf8e;
+  --color-canvas: #0c0c0f;
+  --color-panel: #131316;
+  --color-panel-2: #1a1a1f;
+  --color-ink: #f4f4f5;
+  --color-mute: #a1a1aa;
+  --color-faint: #71717a;
+  --color-line: #2a2a31;
+  --color-ok: #3dd68c;
   --color-bad: #f07178;
   --color-warn: #e6b450;
-  --color-info: #8aa4ff;
+  --color-info: #a5b4fc;
 }
 
 html,
@@ -24,8 +24,18 @@ body,
   background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.45;
   letter-spacing: -0.011em;
+}
+
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
 }
 
 body {
@@ -41,15 +51,16 @@ body {
   background: rgba(138, 164, 255, 0.32);
 }
 
-button,
-input,
-textarea {
-  font: inherit;
-  color: inherit;
-}
-
 button {
   cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(154, 167, 255, 0.85);
+  outline-offset: 2px;
 }
 
 .drag {

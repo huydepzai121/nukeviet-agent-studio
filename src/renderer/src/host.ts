@@ -22,7 +22,7 @@ export function createHost(): EngineHost {
 }
 
 async function electronRun(
-  input: { requestId: string; prompt: string; cwd: string; agentId: string; model: string },
+  input: { requestId: string; prompt: string; cwd: string; agentId: string; model: string; threadId?: string; autoApprove?: boolean },
   onEvent: (event: AgentEvent) => void,
   signal: AbortSignal,
 ): Promise<{ stopReason: string; text: string }> {
@@ -36,7 +36,9 @@ async function electronRun(
     model: input.model,
     cwd: input.cwd,
     prompt: input.prompt,
-    speed: Number(new URLSearchParams(location.search).get('speed') || '1') || 1,
+    speed: Number(new URLSearchParams(location.search).get('speed') || window.studio?.launch.speed || '1') || 1,
+    threadId: input.threadId,
+    autoApprove: input.autoApprove,
   }
   listeners.set(input.requestId, onEvent)
   const onAbort = () => {
@@ -57,8 +59,27 @@ async function browserRun(
   onEvent: (event: AgentEvent) => void,
   signal: AbortSignal,
 ): Promise<{ stopReason: string; text: string }> {
-  const turn = mockTurn(parseTask(input.prompt))
+  const task = parseTask(input.prompt)
+  const turn = mockTurn(task)
   const encoded = encodeTurn(turn)
+  if (task.kind === 'chat') {
+    const vi = task.lang !== 'en'
+    onEvent({
+      type: 'plan',
+      entries: [
+        { content: vi ? 'Đọc bố cục dự án' : 'Read the project layout', status: 'completed', priority: 'high' },
+        { content: vi ? 'Trả lời theo đúng phiên bản NukeViet' : 'Answer for this NukeViet version', status: 'in_progress', priority: 'medium' },
+      ],
+    })
+    onEvent({
+      type: 'permission',
+      title: vi ? 'Đọc version.php' : 'Read version.php',
+      options: [
+        { id: 'allow', name: vi ? 'Cho phép một lần' : 'Allow once', kind: 'allow_once' },
+        { id: 'reject', name: vi ? 'Từ chối' : 'Reject', kind: 'reject_once' },
+      ],
+    })
+  }
   for (const tool of turn.tools) {
     onEvent({ type: 'tool', id: tool.id, title: tool.title, status: 'in_progress' })
     await sleep(220, signal)

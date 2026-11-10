@@ -4,8 +4,9 @@ import { buildPrompt, versionCard } from '@shared/prompts'
 import { knowledgeFor, WORKFLOW_ID, WORKFLOW_NODES } from '@shared/workflow'
 import { isAbortError, setRunSpeed, sleep } from '@shared/timing'
 import { chunkText } from '@shared/mock-script'
-import type { ChatMessage, Lang, RunRecord } from '@shared/types'
-import { activeProject, useStudio } from './store'
+import { makeThread, workspacePath } from '@shared/threads'
+import type { AgentEvent, ChatMessage, ChatPart, Lang, RunRecord } from '@shared/types'
+import { activeProject, activeThread, useStudio } from './store'
 import { createHost } from './host'
 import { uid } from './lib/format'
 
@@ -18,6 +19,7 @@ const COMMANDS = [
   { id: 'workflow', slash: '/workflow' },
   { id: 'version', slash: '/version' },
   { id: 'project', slash: '/project' },
+  { id: 'module', slash: '/module' },
   { id: 'knowledge', slash: '/knowledge' },
   { id: 'clear', slash: '/clear' },
   { id: 'help', slash: '/help' },
@@ -37,9 +39,24 @@ export function wantsRun(text: string): boolean {
   return false
 }
 
+function ensureThread() {
+  const state = useStudio.getState()
+  if (state.activeThreadId && activeThread()) return activeThread()
+  const project = activeProject()
+  if (!project) return null
+  const thread = makeThread(project.id, state.agentId || 'mock', uid('th'))
+  state.addThread(thread)
+  return thread
+}
+
 export async function submitChat(raw: string): Promise<void> {
   const text = raw.trim()
   if (!text) return
+  if (!activeProject()) {
+    useStudio.getState().set({ toast: i18n.t('ade.noProject'), cloneOpen: false })
+    return
+  }
+  ensureThread()
   const state = useStudio.getState()
   if (text.startsWith('/')) {
     state.addMessage(userMessage(text))
@@ -61,33 +78,40 @@ export async function startRun(): Promise<void> {
     return
   }
   const project = activeProject()
+  if (!project) {
+    useStudio.getState().set({ toast: i18n.t('ade.noProject') })
+    return
+  }
+  ensureThread()
+  const thread = activeThread()
+  const cwdProject = { ...project, path: workspacePath(project.path, thread) }
   const agent = state.settings.agents.find((item) => item.id === state.agentId) ?? state.settings.agents[0]
   const run: RunRecord = {
     id: `run-${Math.random().toString(36).slice(2, 6)}`,
     workflowId: WORKFLOW_ID,
-    projectId: project.id,
-    projectName: project.name,
-    module: project.module,
-    version: project.version,
+    projectId: cwdProject.id,
+    projectName: cwdProject.name,
+    module: cwdProject.module,
+    version: cwdProject.version,
     agentId: agent.id,
     agentName: agent.name,
     model: state.settings.model,
     status: 'running',
     live: true,
     createdAt: Date.now(),
-    nodes: blankNodes(project.version, project.module, project.name),
+    nodes: blankNodes(cwdProject.version, cwdProject.module, cwdProject.name),
     evals: { syntax: 'pending', style: 'pending', input: 'pending', sql: 'pending', csrf: 'pending', files: 'pending' },
     attention: false,
   }
   state.upsertRun(run)
-  state.set({ openRunId: run.id, activeTab: run.id, centerView: 'graph', followRun: true, selectedNodeId: 'analyze', busy: true, runsTab: 'runs' })
+  state.set({ openRunId: run.id, activeTab: run.id, centerView: 'graph', followRun: true, selectedNodeId: 'analyze', busy: true, runsTab: 'runs', mode: 'workflow' })
   controller = new AbortController()
-  await say(i18n.t('reply.started', { id: run.id, agent: agent.name, model: state.settings.model, version: project.version }))
+  await say(i18n.t('reply.started', { id: run.id, agent: agent.name, model: state.settings.model, version: cwdProject.version }))
   const host = createHost()
   try {
     const status = await executeRun({
       run,
-      project,
+      project: cwdProject,
       lang: state.settings.lang,
       host,
       signal: controller.signal,
@@ -152,27 +176,82 @@ async function handleCommand(text: string): Promise<void> {
   }
   if (command === '/project') {
     const project = activeProject()
+    if (!project) {
+      await say(i18n.t('ade.noProject'))
+      return
+    }
     await say(i18n.t('reply.project', { name: project.name, module: project.module, version: project.version, path: project.path }))
     return
   }
   if (command === '/knowledge') {
     const project = activeProject()
+    if (!project) {
+      await say(i18n.t('ade.noProject'))
+      return
+    }
     const files = knowledgeFor('scaffold', project.version)
     await say([versionCard(project.version), '', ...files.map((file) => `- \`${file}\``)].join('\n'))
     return
   }
-  if (command === '/version') {
-    const next = arg === '4' || arg === '4.x' ? '4.x' : arg === '5' || arg === '5.x' ? '5.x' : null
-    if (!next) {
-      await say(`${i18n.t('reply.needVersion')}\n\n${versionCard(activeProject().version)}`)
+  if (command === '/module') {
+    const project = activeProject()
+    if (!project) {
+      await say(i18n.t('ade.noProject'))
       return
     }
+    const slug = (arg || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+    if (!slug) {
+      await say(i18n.t('commands.module'))
+      return
+    }
+    useStudio.getState().patchProject(project.id, { module: slug })
+    await say(i18n.t('reply.project', { name: project.name, module: slug, version: project.version, path: project.path }))
+    return
+  }
+  if (command === '/version') {
+    const next = arg === '4' || arg === '4.x' ? '4.x' : arg === '5' || arg === '5.x' ? '5.x' : null
     const project = activeProject()
-    useStudio.getState().patchProject(project.id, { version: next })
+    if (!project) {
+      await say(i18n.t('ade.noProject'))
+      return
+    }
+    if (!next) {
+      await say(`${i18n.t('reply.needVersion')}\n\n${versionCard(project.version)}`)
+      return
+    }
+    useStudio.getState().patchProject(project.id, { version: next, detected: next })
     await say(i18n.t('reply.switched', { name: project.name, version: next }))
     return
   }
   await say(i18n.t('reply.needVersion'))
+}
+
+function foldEvent(parts: ChatPart[], event: AgentEvent, full: { text: string; tools: number }): ChatPart[] {
+  const next = parts.map((part) => ({ ...part }))
+  if (event.type === 'text') {
+    full.text += event.text
+    const part = next.find((item) => item.kind === 'text')
+    if (part) part.text = (part.text ?? '') + event.text
+    else next.push({ id: uid('p'), kind: 'text', text: event.text })
+  } else if (event.type === 'thought') {
+    const part = next.find((item) => item.kind === 'thought')
+    if (part) part.text = (part.text ?? '') + event.text
+    else next.push({ id: uid('p'), kind: 'thought', text: event.text })
+  } else if (event.type === 'tool') {
+    if (event.status === 'in_progress' && !next.some((item) => item.toolId === event.id)) full.tools += 1
+    const part = next.find((item) => item.kind === 'tool' && item.toolId === event.id)
+    if (part) {
+      part.toolStatus = event.status
+      if (event.title) part.text = event.title
+    } else next.push({ id: event.id, kind: 'tool', toolId: event.id, text: event.title, toolStatus: event.status })
+  } else if (event.type === 'plan') {
+    const part = next.find((item) => item.kind === 'plan')
+    if (part) part.entries = event.entries
+    else next.push({ id: uid('plan'), kind: 'plan', entries: event.entries })
+  } else if (event.type === 'permission') {
+    next.push({ id: uid('perm'), kind: 'permission', title: event.title, options: event.options })
+  }
+  return next
 }
 
 async function askAgent(text: string): Promise<void> {
@@ -182,45 +261,65 @@ async function askAgent(text: string): Promise<void> {
     return
   }
   const project = activeProject()
-  const prompt = buildPrompt({ kind: 'chat', attempt: 1, project, lang: state.settings.lang, userText: text })
+  if (!project) return
+  const thread = activeThread()
+  const cwd = workspacePath(project.path, thread)
+  const prompt = buildPrompt({ kind: 'chat', attempt: 1, project: { ...project, path: cwd }, lang: state.settings.lang, userText: text })
   state.set({ busy: true })
   controller = new AbortController()
   const id = uid('m')
-  state.addMessage({ id, role: 'assistant', text: '', createdAt: Date.now(), pending: true })
+  state.addMessage({ id, role: 'assistant', text: '', createdAt: Date.now(), pending: true, parts: [] })
   const started = Date.now()
-  let tools = 0
-  let full = ''
+  const full = { text: '', tools: 0 }
+  let parts: ChatPart[] = []
   try {
     const host = createHost()
     const result = await host.runAgent(
-      { requestId: id, prompt, cwd: project.path, agentId: state.agentId, model: state.settings.model },
+      {
+        requestId: id,
+        prompt,
+        cwd,
+        agentId: thread?.agentId || state.agentId,
+        model: state.settings.model,
+        threadId: thread?.id,
+        autoApprove: false,
+      },
       (event) => {
-        if (event.type === 'text') {
-          full += event.text
-          const visible = strip(full)
-          useStudio.getState().patchMessage(id, { text: visible })
-        } else if (event.type === 'tool' && event.status === 'in_progress') {
-          tools += 1
-        }
+        parts = foldEvent(parts, event, full)
+        const chosen = new Map(
+          (useStudio.getState().messages.find((item) => item.id === id)?.parts ?? [])
+            .filter((part) => part.kind === 'permission' && part.selected)
+            .map((part) => [part.title, part.selected]),
+        )
+        parts = parts.map((part) => (part.kind === 'permission' && !part.selected && chosen.get(part.title || '') ? { ...part, selected: chosen.get(part.title || '') } : part))
+        useStudio.getState().patchMessage(id, { text: strip(full.text), parts })
       },
       controller.signal,
     )
+    const visible = strip(result.text || full.text)
     useStudio.getState().patchMessage(id, {
-      text: strip(result.text),
+      text: visible,
+      parts,
       pending: false,
       durationMs: Date.now() - started,
-      toolCalls: tools,
+      toolCalls: full.tools,
     })
   } catch (error) {
     if (isAbortError(error)) {
-      useStudio.getState().patchMessage(id, { pending: false, stopped: true, durationMs: Date.now() - started })
+      useStudio.getState().patchMessage(id, { pending: false, stopped: true, durationMs: Date.now() - started, parts })
     } else {
       const message = error instanceof Error ? error.message : String(error)
-      useStudio.getState().patchMessage(id, { text: message, pending: false })
+      useStudio.getState().patchMessage(id, { text: message, pending: false, parts })
     }
   } finally {
     controller = null
     useStudio.getState().set({ busy: false })
+    const current = activeProject()
+    if (current && window.studio && !current.virtual) {
+      void window.studio.gitStatus(workspacePath(current.path, activeThread())).then((status) => {
+        useStudio.getState().patchProject(current.id, status)
+      })
+    }
   }
 }
 
@@ -278,10 +377,15 @@ export function applyQueryFlags(): void {
   }
   if (params.get('focus') === 'settings') useStudio.getState().set({ settingsOpen: true, settingsSection: 'model' })
   if (params.get('focus') === 'runs') useStudio.getState().set({ bottomHeight: 420, runsTab: 'runs', runFilter: 'all' })
-  if (params.get('autodemo') === '1') {
-    window.setTimeout(() => {
-      void startRun()
-    }, 350)
+  if (params.get('autodemo') === '1' || params.get('sample') === '1') {
+    void import('./ade').then(({ openSample }) => {
+      openSample()
+      if (params.get('autodemo') === '1') {
+        window.setTimeout(() => {
+          void startRun()
+        }, 350)
+      }
+    })
   }
 }
 

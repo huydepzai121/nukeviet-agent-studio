@@ -1,4 +1,5 @@
 import type { Lang, MockTask, MockTurnResult, NvVersion } from './types'
+import { moduleSummary, themeSummary } from './blueprint'
 import { encodeTurn } from './parse'
 import { moduleRoot } from './workflow'
 
@@ -117,7 +118,10 @@ function theme(task: MockTask, root: string, vi: boolean): MockTurnResult {
             `- Admin: \`src/themes/admin_future/modules/${task.module}/main.tpl\``,
             `- JS riêng: \`src/themes/admin_future/js/${task.module}.js\` (ajax-submit, không viết trong tpl).`,
             '',
-            'Danh sách dùng bảng Bootstrap 5. Form content có `invalid-feedback`. Tiêu đề lấy từ `{$LANG->getModule(\'title\')}`.',
+            'Danh sách dùng bảng Bootstrap 5. Form content có `invalid-feedback`. Tiêu đề lấy từ `{$LANG->getModule(\'title\')}`.'
+            ,
+            '',
+            themeSummary(),
             '',
             'Hằng URL viết thẳng `{$smarty.const.NV_BASE_SITEURL}`, không assign lại từ PHP.',
           ].join('\n')
@@ -212,6 +216,8 @@ function scaffoldOk(task: MockTask, root: string, vi: boolean): MockTurnResult {
           '```',
           '',
           'Khung bám skeleton ' + (task.version === '5.x' ? '`templates/module-5x`' : '`templates/module-4x`') + '.',
+          '',
+          task.version === '5.x' ? moduleSummary(task.module, task.title) : '',
         ].join('\n')
       : [
           '```diff',
@@ -424,11 +430,15 @@ function chatTurn(task: MockTask): MockTurnResult {
       ? `Mình đang ở dự án **${task.title}** (${task.module}, NukeViet ${task.version}), agent Mock ACP. Gõ \`/run\` để chạy workflow module, \`/workflow\` để xem các bước, \`/help\` để liệt kê lệnh.`
       : `Project **${task.title}** (${task.module}, NukeViet ${task.version}), Mock ACP. Use \`/run\` to start the module workflow, \`/workflow\` for the steps, \`/help\` for commands.`
   }
+  const root = moduleRoot(task.version, task.module)
   return {
     status: 'ok',
     summary: text,
     text,
-    tools: [],
+    tools: [
+      { id: 't-read-ver', title: vi ? `Đọc ${root}/version.php` : `Read ${root}/version.php`, kind: 'read' },
+      { id: 't-search-conv', title: vi ? 'Tìm quy ước NukeViet' : 'Search NukeViet conventions', kind: 'search' },
+    ],
     logs: [{ level: 'info', message: 'mock chat' }],
   }
 }

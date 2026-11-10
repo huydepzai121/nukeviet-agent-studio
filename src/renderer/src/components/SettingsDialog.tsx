@@ -220,6 +220,9 @@ function ProjectSection() {
   const addProject = useStudio((s) => s.addProject)
   const set = useStudio((s) => s.set)
   const project = projects.find((item) => item.id === activeId) ?? projects[0]
+  if (!project) {
+    return <p className="text-[13.5px] text-mute">{t('ade.noProject')}</p>
+  }
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <div className="flex gap-2">
@@ -233,7 +236,7 @@ function ProjectSection() {
         <TextInput value={project.name} onChange={(event) => patchProject(project.id, { name: event.target.value })} />
       </Field>
       <Field label={t('settings.module')}>
-        <TextInput value={project.module} onChange={(event) => patchProject(project.id, { module: event.target.value })} spellCheck={false} className="font-mono" />
+        <TextInput data-testid="project-module" value={project.module} onChange={(event) => patchProject(project.id, { module: event.target.value })} spellCheck={false} className="font-mono" />
       </Field>
       <Field label={t('settings.version')}>
         <div className="grid grid-cols-2 gap-2">

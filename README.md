@@ -4,6 +4,19 @@ Harness lập trình trên desktop cho NukeViet CMS. Ứng dụng là **ACP clie
 
 Giao diện mặc định là tiếng Việt. Chuyển English trong Cài đặt → Ngôn ngữ (`vi` / `en`).
 
+## ADE
+
+Studio là môi trường lập trình cho agent (ADE), cùng kiểu dự án / hội thoại / worktree với T3 Code và Conductor. Canvas workflow, Inspector và Runs vẫn nằm trong chế độ **Workflow** của từng hội thoại.
+
+- **Dự án.** Sidebar trái. Mở thư mục bằng hộp thoại hệ thống. Clone repository (URL, nhánh, thư mục đích, tiến trình `git clone` chạy trực tiếp). Dự án gần đây được ghi vào `userData/nvas-ade.json`. Thư mục NukeViet được gắn nhãn **4.x** hoặc **5.x** (5.x có `src/`, Smarty, chỉ `vi.php`; 4.x có XTemplate và `admin_vi.php`). Nhánh git và dấu thay đổi chưa commit hiện cạnh tên dự án.
+- **Hội thoại.** Mỗi dự án có nhiều chat. Nút **Cuộc trò chuyện mới** và `Ctrl/Cmd+N`. Đổi tên, xóa, tự đặt tiêu đề từ tin nhắn đầu. Mỗi hội thoại giữ một phiên ACP riêng, cwd là thư mục dự án (hoặc worktree). Chọn agent: Mock ACP, Claude Code, Codex, Gemini CLI, hoặc lệnh tùy chỉnh.
+- **Workspace.** Cây thư mục, diff (`git diff` + file mới) với Accept (stage) và Revert theo file, terminal xterm.js. Có thể tạo git worktree/nhánh `nvas/…` cho một hội thoại.
+- **Workflow.** Tab Chat | Workflow | Diff | Terminal. Workflow chạy trên thư mục thật. Gói kiến thức và skeleton 4.x / 5.x giữ nguyên. Trên NukeViet 5, Mock ACP ghi module `contactbook` (CRUD admin + trang site) và theme `studio` (copy `default` + CSS riêng).
+- **Lệnh.** `Ctrl/Cmd+K` mở bảng lệnh. Trong chat: `/run`, `/stop`, `/module contactbook`, `/version 5`, `/help`.
+- **Cài đặt.** Gateway OpenAI-compatible mặc định `https://bedrock.viber.vn/v1`. API key nằm trong `safeStorage` (hoặc AES trong `userData` nếu máy không có keyring) và được đưa vào env của agent. Lệnh từng agent sửa trong Cài đặt → Tác nhân ACP.
+
+Terminal dùng PTY qua Python (`pty.fork`) vì `node-pty` cần biên dịch native. Nếu không có `python3`, studio rơi về shell pipe.
+
 ## Vì sao Electron
 
 SDK chính thức `@agentclientprotocol/sdk` là TypeScript và nói chuyện với agent bằng JSON-RPC trên stdio. Tiến trình main của Electron là Node, nên spawn Claude Code, Codex, Gemini CLI và mock agent là một lệnh `spawn` cộng `ndJsonStream`. Tauri buộc phải viết client ACP bằng Rust hoặc nhét một sidecar Node. Electron cũng có `safeStorage` (DPAPI trên Windows, Keychain trên macOS, libsecret trên Linux) để giữ API key ngoài repo.

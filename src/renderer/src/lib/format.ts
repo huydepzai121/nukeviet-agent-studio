@@ -13,13 +13,15 @@ export function formatTime(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export function relativeTime(at: number, lang: 'vi' | 'en'): string {
-  const delta = Date.now() - at
-  const minutes = Math.round(delta / 60000)
-  if (minutes < 1) return lang === 'vi' ? 'vừa xong' : 'just now'
+export function relativeTime(at: number, lang: 'vi' | 'en', now = Date.now()): string {
+  const delta = now - at
+  if (!Number.isFinite(delta) || delta < 45_000) return lang === 'vi' ? 'vừa xong' : 'just now'
+  const minutes = Math.round(delta / 60_000)
   if (minutes < 60) return lang === 'vi' ? `${minutes} phút trước` : `${minutes}m ago`
   const hours = Math.round(minutes / 60)
-  if (hours < 36) return lang === 'vi' ? `${hours} giờ trước` : `${hours}h ago`
+  if (hours < 24) return lang === 'vi' ? `${hours} giờ trước` : `${hours}h ago`
   const days = Math.round(hours / 24)
-  return lang === 'vi' ? `${days} ngày trước` : `${days}d ago`
+  if (days <= 1) return lang === 'vi' ? 'hôm qua' : 'yesterday'
+  if (days < 14) return lang === 'vi' ? `${days} ngày trước` : `${days}d ago`
+  return new Date(at).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-CA')
 }

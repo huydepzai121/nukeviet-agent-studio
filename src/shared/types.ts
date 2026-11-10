@@ -7,12 +7,46 @@ export type NodeStatus = 'idle' | 'pending' | 'running' | 'done' | 'failed' | 'a
 export type RunStatus = 'running' | 'done' | 'failed' | 'aborted'
 export type EvalState = 'pending' | 'pass' | 'fail'
 
+export type DetectedVersion = NvVersion | 'unknown'
+export type ThreadMode = 'chat' | 'workflow' | 'diff' | 'terminal'
+
 export interface Project {
   id: string
   name: string
   module: string
   version: NvVersion
   path: string
+  detected?: DetectedVersion
+  branch?: string
+  dirty?: boolean
+  repo?: boolean
+  lastOpenedAt?: number
+  virtual?: boolean
+}
+
+export interface ChatPart {
+  id: string
+  kind: 'text' | 'tool' | 'plan' | 'permission' | 'thought'
+  text?: string
+  toolId?: string
+  toolStatus?: 'in_progress' | 'completed' | 'failed'
+  entries?: { content: string; status: string; priority?: string }[]
+  title?: string
+  options?: { id: string; name: string; kind: string }[]
+  selected?: string
+}
+
+export interface Thread {
+  id: string
+  projectId: string
+  title: string
+  autoTitle: boolean
+  agentId: string
+  createdAt: number
+  updatedAt: number
+  messages: ChatMessage[]
+  worktreePath?: string
+  worktreeBranch?: string
 }
 
 export interface AgentProfile {
@@ -103,6 +137,7 @@ export interface ChatMessage {
   durationMs?: number
   toolCalls?: number
   stopped?: boolean
+  parts?: ChatPart[]
 }
 
 export interface MockTask {
@@ -138,12 +173,56 @@ export interface AgentTask {
   cwd: string
   prompt: string
   speed: number
+  threadId?: string
+  autoApprove?: boolean
+}
+
+export interface PermissionOptionView {
+  id: string
+  name: string
+  kind: string
 }
 
 export type AgentEvent =
   | { type: 'text'; text: string }
+  | { type: 'thought'; text: string }
   | { type: 'tool'; id: string; title: string; status: 'in_progress' | 'completed' | 'failed' }
+  | { type: 'plan'; entries: { content: string; status: string; priority?: string }[] }
+  | { type: 'permission'; title: string; options: PermissionOptionView[] }
   | { type: 'done'; stopReason: string }
+
+export interface ProjectInspect {
+  name: string
+  path: string
+  module: string
+  version: NvVersion
+  detected: DetectedVersion
+  notes: string[]
+  branch: string
+  dirty: boolean
+  repo: boolean
+}
+
+export interface DiffFile {
+  path: string
+  additions: number
+  deletions: number
+  untracked: boolean
+  binary: boolean
+  patch: string
+}
+
+export interface DirEntry {
+  name: string
+  path: string
+  kind: 'file' | 'dir'
+}
+
+export interface GitStatusInfo {
+  branch: string
+  dirty: boolean
+  repo: boolean
+}
 
 export interface ProviderTestRequest {
   gateway: GatewayMode

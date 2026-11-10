@@ -7,7 +7,22 @@ export const DEFAULT_AGENTS: AgentProfile[] = [
   { id: 'claude', name: 'Claude Code', builtin: false, command: 'npx -y @agentclientprotocol/claude-agent-acp' },
   { id: 'codex', name: 'Codex', builtin: false, command: 'npx -y @agentclientprotocol/codex-acp' },
   { id: 'gemini', name: 'Gemini CLI', builtin: false, command: 'gemini --acp' },
+  { id: 'custom', name: 'Custom', builtin: false, command: '' },
 ]
+
+export function mergeAgents(saved: AgentProfile[] | undefined): AgentProfile[] {
+  const base = DEFAULT_AGENTS.map((agent) => {
+    const found = saved?.find((item) => item.id === agent.id)
+    if (!found) return { ...agent }
+    return {
+      ...agent,
+      command: typeof found.command === 'string' ? found.command : agent.command,
+      name: agent.builtin ? agent.name : found.name?.trim() || agent.name,
+    }
+  })
+  const extras = (saved ?? []).filter((agent) => agent?.id && agent.name && !DEFAULT_AGENTS.some((item) => item.id === agent.id))
+  return [...base, ...extras.map((agent) => ({ id: agent.id, name: agent.name, builtin: false, command: agent.command || '' }))]
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   gateway: 'both',

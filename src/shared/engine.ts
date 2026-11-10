@@ -5,8 +5,8 @@ import type { AgentEvent, Lang, NodeRuntime, Project, RunRecord, TranscriptItem 
 import { EVAL_IDS, LINEAR_STEPS, MAX_ATTEMPTS, nodeDef } from './workflow'
 
 export interface EngineHost {
-  runAgent(
-    input: { requestId: string; prompt: string; cwd: string; agentId: string; model: string },
+    runAgent(
+    input: { requestId: string; prompt: string; cwd: string; agentId: string; model: string; threadId?: string; autoApprove?: boolean },
     onEvent: (event: AgentEvent) => void,
     signal: AbortSignal,
   ): Promise<{ stopReason: string; text: string }>
@@ -90,6 +90,7 @@ async function runNode(
           cwd: ctx.project.path,
           agentId: ctx.run.agentId,
           model: ctx.run.model,
+          autoApprove: true,
         },
         (event) => {
           if (event.type === 'text') {

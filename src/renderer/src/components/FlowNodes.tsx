@@ -34,7 +34,7 @@ export function StepNode({ data, selected }: NodeProps<Node<FlowData>>) {
       data-node-id={data.nodeId}
       data-node-status={status}
       className={cn(
-        'w-[208px] rounded-xl border bg-[#1b1c22] px-3 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.35)]',
+        'w-[220px] rounded-xl border bg-[#1b1c22] px-3 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.28)]',
         selected && 'ring-1 ring-white/80',
         status === 'done' && 'border-ok/45',
         status === 'failed' && 'border-bad shadow-[0_0_0_1px_rgba(240,113,120,0.45)]',
@@ -50,8 +50,8 @@ export function StepNode({ data, selected }: NodeProps<Node<FlowData>>) {
           <Icon size={13} />
         </span>
         <div className="min-w-0">
-          <div className="truncate text-[12.5px] font-medium text-ink">{t(`nodes.${data.nodeId}`)}</div>
-          <div className="font-mono text-[10.5px] text-faint">{data.agent}</div>
+          <div className="truncate text-[13px] font-medium text-ink">{t(`nodes.${data.nodeId}`)}</div>
+          <div className="font-mono text-[11.5px] text-faint">{data.agent}</div>
         </div>
       </div>
       <div

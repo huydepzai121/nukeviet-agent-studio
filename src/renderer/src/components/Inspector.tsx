@@ -32,7 +32,7 @@ function NodeInspector() {
   const selected = useStudio((s) => s.selectedNodeId)
   const activeTab = useStudio((s) => s.activeTab)
   const runs = useStudio((s) => s.runs)
-  const project = useStudio((s) => s.projects.find((item) => item.id === s.activeProjectId) ?? s.projects[0])
+  const project = useStudio((s) => s.projects.find((item) => item.id === s.activeProjectId) ?? s.projects[0] ?? null)
   const set = useStudio((s) => s.set)
   const run = activeTab === 'workflow' ? undefined : runs.find((item) => item.id === activeTab)
   const node = run?.nodes.find((item) => item.id === selected)
@@ -70,7 +70,7 @@ function NodeInspector() {
           <div className="mt-4 border-t border-line pt-3">
             <div className="mb-1.5 text-[11px] tracking-wide text-faint uppercase">{t('inspector.knowledge')}</div>
             <ul className="space-y-1 font-mono text-[11px] text-mute">
-              {knowledgeFor(selected, project.version).map((file) => (
+              {knowledgeFor(selected, project?.version ?? '5.x').map((file) => (
                 <li key={file}>{file}</li>
               ))}
             </ul>
@@ -115,10 +115,11 @@ function Logs({ node }: { node?: RunRecord['nodes'][number] }) {
 
 function WorkflowPane() {
   const { t } = useTranslation()
-  const project = useStudio((s) => s.projects.find((item) => item.id === s.activeProjectId) ?? s.projects[0])
+  const project = useStudio((s) => s.projects.find((item) => item.id === s.activeProjectId) ?? s.projects[0] ?? null)
   const [doc, setDoc] = useState<string | null>(null)
   const [body, setBody] = useState('')
-  const files = knowledgeFor('analyze', project.version)
+  const version = project?.version ?? '5.x'
+  const files = knowledgeFor('analyze', version)
   useEffect(() => {
     if (!doc) return
     let cancelled = false
@@ -133,7 +134,7 @@ function WorkflowPane() {
     <div className="space-y-4 px-3 py-3">
       <div>
         <div className="text-[12px] text-faint">{t('inspector.versionCard')}</div>
-        <pre className="mt-2 overflow-auto rounded-xl border border-line bg-black/25 p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-mute">{versionCard(project.version)}</pre>
+        <pre className="mt-2 overflow-auto rounded-xl border border-line bg-black/25 p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-mute">{versionCard(version)}</pre>
       </div>
       <p className="text-[12px] text-mute">{t('inspector.retry', { n: MAX_ATTEMPTS })}</p>
       <DiffTable />

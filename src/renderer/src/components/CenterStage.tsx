@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { Play, X } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useReactFlow, ReactFlowProvider } from '@xyflow/react'
@@ -35,12 +35,9 @@ function Stage() {
   const openRunId = useStudio((s) => s.openRunId)
   const centerView = useStudio((s) => s.centerView)
   const selectedNodeId = useStudio((s) => s.selectedNodeId)
-  const followRun = useStudio((s) => s.followRun)
   const busy = useStudio((s) => s.busy)
   const set = useStudio((s) => s.set)
   const shown = activeTab === 'workflow' ? undefined : runs.find((item) => item.id === activeTab)
-  const focusId = shown?.nodes.find((node) => node.status === 'running')?.id
-
   return (
     <section className="flex h-full min-h-0 flex-col bg-[#0c0d10]" data-testid="canvas">
       <div className="flex h-10 items-end gap-1 border-b border-line px-2">
@@ -64,7 +61,7 @@ function Stage() {
         <Pill tone={toneOf(shown?.status)}>{shown ? t(`runState.${shown.status}`) : t('status.idle')}</Pill>
         <div className="flex-1" />
         {busy && shown?.status === 'running' ? (
-          <button type="button" onClick={() => stopActive()} className="rounded-md px-2 py-1 text-[12px] text-bad hover:bg-bad/10">
+          <button type="button" onClick={() => stopActive()} className="inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] text-bad hover:bg-bad/10">
             {t('chat.stop')}
           </button>
         ) : (
@@ -72,8 +69,9 @@ function Stage() {
             type="button"
             data-testid="run-button"
             onClick={() => void startRun()}
-            className="rounded-md bg-white px-2.5 py-1 text-[12px] font-medium text-canvas hover:bg-white/90"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white px-3 text-[13px] font-medium text-[#111113] hover:bg-zinc-100"
           >
+            <Play size={13} fill="currentColor" />
             {t('center.run')}
           </button>
         )}
@@ -93,7 +91,7 @@ function Stage() {
       </div>
       <div className="min-h-0 flex-1">
         {centerView === 'graph' ? (
-          <Graph shown={activeTab === 'workflow' ? undefined : shown} selectedNodeId={selectedNodeId} focusId={followRun ? focusId : undefined} onSelect={(id) => set({ selectedNodeId: id, followRun: false, rightTab: 'inspector' })} />
+          <Graph shown={activeTab === 'workflow' ? undefined : shown} selectedNodeId={selectedNodeId} onSelect={(id) => set({ selectedNodeId: id, followRun: false, rightTab: 'inspector' })} />
         ) : centerView === 'review' ? (
           <div className="h-full overflow-auto px-6 py-4">
             {shown ? <Report run={shown} /> : <p className="text-mute">{t('center.noReview')}</p>}
@@ -111,12 +109,10 @@ function Stage() {
 function Graph({
   shown,
   selectedNodeId,
-  focusId,
   onSelect,
 }: {
   shown?: RunRecord
   selectedNodeId: string | null
-  focusId?: string
   onSelect: (id: string) => void
 }) {
   const nodes = useMemo<Node<FlowData>[]>(() => {
@@ -150,6 +146,7 @@ function Graph({
         source: edge.source,
         target: edge.target,
         sourceHandle: edge.sourceHandle,
+        type: 'smoothstep',
         animated: Boolean(running && source?.status === 'done'),
         style: {
           stroke: skipped ? '#3a3c44' : target?.status === 'failed' ? '#f07178' : target?.status === 'done' && taken ? '#3ecf8e' : running ? '#e6b450' : '#4a4d57',
@@ -160,47 +157,44 @@ function Graph({
     })
   }, [shown])
 
+  const signature = `${shown?.id ?? 'workflow'}:${shown?.status ?? ''}:${shown?.branch ?? ''}`
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      minZoom={0.45}
-      maxZoom={1.4}
-      proOptions={{ hideAttribution: false }}
-      onNodeClick={(_, node) => onSelect(node.id)}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable
-    >
-      <Background variant={BackgroundVariant.Dots} gap={18} size={1.1} color="#2a2c33" />
-      <Controls showInteractive={false} position="bottom-left" />
-      <FitOnce tabKey={shown?.id ?? 'workflow'} skip={Boolean(focusId)} />
-      <Focus focusId={focusId} />
-    </ReactFlow>
+    <div className="h-full w-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+        minZoom={0.35}
+        maxZoom={1.5}
+        proOptions={{ hideAttribution: true }}
+        onNodeClick={(_, node) => onSelect(node.id)}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable
+      >
+        <Background variant={BackgroundVariant.Dots} gap={18} size={1.1} color="#2a2c33" />
+        <Controls showInteractive={false} position="bottom-left" />
+        <FitWatch signature={signature} />
+      </ReactFlow>
+    </div>
   )
 }
 
-function FitOnce({ tabKey, skip }: { tabKey: string; skip: boolean }) {
+function FitWatch({ signature }: { signature: string }) {
   const rf = useReactFlow()
   useEffect(() => {
-    if (skip) return
-    const timer = window.setTimeout(() => {
-      void rf.fitView({ padding: 0.2, maxZoom: 1, duration: 220 })
-    }, 40)
-    return () => window.clearTimeout(timer)
-  }, [tabKey, skip, rf])
-  return null
-}
-
-function Focus({ focusId }: { focusId?: string }) {
-  const rf = useReactFlow()
-  useEffect(() => {
-    if (!focusId) return
-    const node = rf.getNode(focusId)
-    if (!node) return
-    void rf.setCenter(node.position.x + 110, node.position.y + 48, { zoom: 1, duration: 420 })
-  }, [focusId, rf])
+    const fit = () => void rf.fitView({ padding: 0.18, maxZoom: 1.05, duration: 180 })
+    const timer = window.setTimeout(fit, 50)
+    const observer = new ResizeObserver(() => fit())
+    const root = document.querySelector('[data-testid="canvas"] .react-flow')
+    if (root) observer.observe(root)
+    return () => {
+      window.clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [signature, rf])
   return null
 }
 

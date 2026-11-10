@@ -1,29 +1,30 @@
 import { create } from 'zustand'
-import { DEFAULT_SETTINGS, SEED_PROJECTS } from '@shared/defaults'
-import { EVAL_IDS } from '@shared/workflow'
-import type { ChatMessage, Lang, NodeRuntime, Project, RunRecord, Settings } from '@shared/types'
-import { vi } from './i18n/dict'
+import { DEFAULT_SETTINGS, mergeAgents } from '@shared/defaults'
+import { normalizeSnapshot, type AdeSnapshot } from '@shared/snapshot'
+import { titleFromMessage } from '@shared/threads'
+import type { ChatMessage, NodeRuntime, Project, RunRecord, Settings, Thread, ThreadMode } from '@shared/types'
 
-const STORAGE_KEY = 'nvas.v1'
+const STORAGE_KEY = 'nvas.ade.v2'
 
 export type RunFilter = 'active' | 'attention' | 'live' | 'finished' | 'all'
 export type SettingsSection = 'model' | 'agents' | 'project' | 'language'
 export type CenterView = 'graph' | 'review' | 'messages'
 export type InspectorTab = 'spec' | 'output' | 'transcript' | 'logs'
 
-interface Persisted {
+interface StudioState {
   projects: Project[]
-  activeProjectId: string
+  threads: Thread[]
+  activeProjectId: string | null
+  activeThreadId: string | null
   settings: Settings
   messages: ChatMessage[]
   runs: RunRecord[]
   agentId: string
+  mode: ThreadMode
+  filesOpen: boolean
   leftWidth: number
   rightWidth: number
   bottomHeight: number
-}
-
-interface StudioState extends Persisted {
   openRunId: string | null
   activeTab: 'workflow' | string
   centerView: CenterView
@@ -36,121 +37,91 @@ interface StudioState extends Persisted {
   runQuery: string
   settingsOpen: boolean
   settingsSection: SettingsSection
+  paletteOpen: boolean
+  cloneOpen: boolean
   busy: boolean
   secretSaved: boolean
   secretStorage: 'safeStorage' | 'aes' | 'memory' | null
   toast: string | null
+  hydrated: boolean
   set: (patch: Partial<StudioState>) => void
   patchSettings: (patch: Partial<Settings>) => void
   patchProject: (id: string, patch: Partial<Project>) => void
   addProject: (project: Project) => void
+  removeProject: (id: string) => void
+  addThread: (thread: Thread) => void
+  selectThread: (id: string) => void
+  patchThread: (id: string, patch: Partial<Thread>) => void
+  removeThread: (id: string) => void
   addMessage: (message: ChatMessage) => void
   patchMessage: (id: string, patch: Partial<ChatMessage>) => void
   clearMessages: () => void
   upsertRun: (run: RunRecord) => void
   patchRun: (id: string, patch: Partial<RunRecord>) => void
   patchNode: (runId: string, nodeId: string, patch: Partial<NodeRuntime>) => void
+  applySnapshot: (snapshot: AdeSnapshot) => void
 }
 
-function seedNode(id: string, status: NodeRuntime['status'], attempt: number, output: string): NodeRuntime {
+function blank(): Pick<StudioState, 'projects' | 'threads' | 'activeProjectId' | 'activeThreadId' | 'settings' | 'messages' | 'runs' | 'agentId' | 'mode' | 'filesOpen' | 'leftWidth' | 'rightWidth' | 'bottomHeight'> {
   return {
-    id,
-    status,
-    attempt,
-    output,
-    spec: '',
-    transcript: output ? [{ id: `${id}-a`, kind: 'assistant', text: output, at: Date.now() - 3600_000 }] : [],
-    logs: [],
-    finishedAt: status === 'pending' ? undefined : Date.now() - 3600_000,
-  }
-}
-
-function seedRuns(): RunRecord[] {
-  const now = Date.now()
-  const doneNodes = ['analyze', 'theme', 'scaffold', 'backend', 'lang', 'gate', 'review'].map((id) =>
-    seedNode(id, 'done', id === 'scaffold' ? 2 : 1, id === 'gate' ? 'Cổng đạt. Nhánh review.' : 'Đã xong ở lần chạy trước.'),
-  )
-  doneNodes.push(seedNode('fix', 'skipped', 0, ''))
-  const abortedNodes = ['analyze', 'theme', 'scaffold'].map((id) => seedNode(id, 'done', 1, 'Đã xong trước khi dừng.'))
-  abortedNodes.push(seedNode('backend', 'aborted', 1, 'Dừng khi đang viết action_mysql.php.'))
-  for (const id of ['lang', 'gate', 'review', 'fix']) abortedNodes.push(seedNode(id, 'pending', 0, ''))
-  return [
-    {
-      id: 'run-4c1e',
-      workflowId: 'nukeviet-module',
-      projectId: 'news',
-      projectName: 'Tin tức',
-      module: 'news',
-      version: '5.x',
-      agentId: 'mock',
-      agentName: 'Mock ACP',
-      model: 'claude-sonnet-4-6',
-      status: 'done',
-      live: false,
-      branch: 'review',
-      createdAt: now - 26 * 3600_000,
-      finishedAt: now - 26 * 3600_000 + 64_000,
-      nodes: doneNodes,
-      evals: Object.fromEntries(EVAL_IDS.map((id) => [id, 'pass'])),
-      attention: false,
-    },
-    {
-      id: 'run-9ab2',
-      workflowId: 'nukeviet-module',
-      projectId: 'news',
-      projectName: 'Tin tức',
-      module: 'news',
-      version: '5.x',
-      agentId: 'mock',
-      agentName: 'Mock ACP',
-      model: 'claude-sonnet-4-6',
-      status: 'aborted',
-      live: false,
-      createdAt: now - 2 * 3600_000,
-      finishedAt: now - 2 * 3600_000 + 28_000,
-      nodes: abortedNodes,
-      evals: Object.fromEntries(EVAL_IDS.map((id) => [id, 'pending'])),
-      attention: true,
-    },
-  ]
-}
-
-function seedMessages(lang: Lang): ChatMessage[] {
-  const now = Date.now() - 3 * 3600_000
-  const welcome = lang === 'en' ? vi.seed.welcomeEn : vi.seed.welcome
-  const user = lang === 'en' ? vi.seed.userEn : vi.seed.user
-  return [
-    { id: 'm-user', role: 'user', text: user, createdAt: now },
-    { id: 'm-welcome', role: 'assistant', text: welcome, createdAt: now + 1500, durationMs: 4200, toolCalls: 0 },
-  ]
-}
-
-function fresh(): Persisted {
-  return {
-    projects: SEED_PROJECTS,
-    activeProjectId: 'news',
+    projects: [],
+    threads: [],
+    activeProjectId: null,
+    activeThreadId: null,
     settings: structuredClone(DEFAULT_SETTINGS),
-    messages: seedMessages('vi'),
-    runs: seedRuns(),
+    messages: [],
+    runs: [],
     agentId: 'mock',
-    leftWidth: 372,
+    mode: 'chat',
+    filesOpen: true,
+    leftWidth: 268,
     rightWidth: 332,
-    bottomHeight: 248,
+    bottomHeight: 228,
   }
 }
 
-function load(): Persisted {
+function snapshotOf(state: StudioState): AdeSnapshot {
+  return {
+    version: 2,
+    projects: state.projects,
+    threads: state.threads.map((thread) => ({ ...thread, messages: thread.messages.slice(-120) })),
+    activeProjectId: state.activeProjectId,
+    activeThreadId: state.activeThreadId,
+    settings: state.settings,
+    runs: state.runs.slice(0, 20),
+    mode: state.mode,
+    filesOpen: state.filesOpen,
+    agentId: state.agentId,
+  }
+}
+
+function viewFrom(snapshot: AdeSnapshot) {
+  const thread = snapshot.threads.find((item) => item.id === snapshot.activeThreadId) ?? null
+  return {
+    ...snapshot,
+    settings: { ...snapshot.settings, agents: mergeAgents(snapshot.settings.agents) },
+    messages: thread?.messages ?? [],
+    agentId: thread?.agentId || snapshot.agentId || 'mock',
+  }
+}
+
+function loadLocal(): ReturnType<typeof blank> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return fresh()
-    const parsed = JSON.parse(raw) as Persisted
-    parsed.runs = parsed.runs.map((run) =>
-      run.status === 'running' ? { ...run, status: 'aborted', live: false, attention: true, finishedAt: run.finishedAt ?? Date.now() } : run,
-    )
-    parsed.settings = { ...structuredClone(DEFAULT_SETTINGS), ...parsed.settings, agents: parsed.settings.agents?.length ? parsed.settings.agents : DEFAULT_SETTINGS.agents }
-    return { ...fresh(), ...parsed }
+    if (raw) return { ...blank(), ...viewFrom(normalizeSnapshot(JSON.parse(raw))) }
+    const legacy = localStorage.getItem('nvas.v1')
+    if (!legacy) return blank()
+    const parsed = JSON.parse(legacy) as Partial<AdeSnapshot> & { messages?: ChatMessage[]; activeProjectId?: string }
+    const snapshot = normalizeSnapshot({
+      ...parsed,
+      threads: [],
+      activeThreadId: null,
+      mode: 'workflow',
+      filesOpen: false,
+    })
+    return { ...blank(), ...viewFrom(snapshot), leftWidth: 268, rightWidth: 332, bottomHeight: 228 }
   } catch {
-    return fresh()
+    return blank()
   }
 }
 
@@ -158,23 +129,32 @@ let persistTimer = 0
 function schedulePersist(state: StudioState): void {
   window.clearTimeout(persistTimer)
   persistTimer = window.setTimeout(() => {
-    const payload: Persisted = {
-      projects: state.projects,
-      activeProjectId: state.activeProjectId,
-      settings: state.settings,
-      messages: state.messages.slice(-80),
-      runs: state.runs.slice(0, 20),
-      agentId: state.agentId,
-      leftWidth: state.leftWidth,
-      rightWidth: state.rightWidth,
-      bottomHeight: state.bottomHeight,
+    const payload = snapshotOf(state)
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+      localStorage.setItem('nvas.lang', state.settings.lang)
+    } catch {
+      /* private mode */
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-    localStorage.setItem('nvas.lang', state.settings.lang)
-  }, 120)
+    void window.studio?.saveState(payload)
+  }, 160)
 }
 
-const initial = load()
+function withThreadMessages(state: StudioState, messages: ChatMessage[], touchTitle: ChatMessage | null): Pick<StudioState, 'messages' | 'threads'> {
+  const threads = state.threads.map((thread) => {
+    if (thread.id !== state.activeThreadId) return thread
+    let title = thread.title
+    let autoTitle = thread.autoTitle
+    if (touchTitle && thread.autoTitle && touchTitle.role === 'user') {
+      title = titleFromMessage(touchTitle.text)
+      autoTitle = false
+    }
+    return { ...thread, messages, title, autoTitle, updatedAt: Date.now() }
+  })
+  return { messages, threads }
+}
+
+const initial = loadLocal()
 
 export const useStudio = create<StudioState>((set, get) => ({
   ...initial,
@@ -190,10 +170,13 @@ export const useStudio = create<StudioState>((set, get) => ({
   runQuery: '',
   settingsOpen: false,
   settingsSection: 'model',
+  paletteOpen: false,
+  cloneOpen: false,
   busy: false,
   secretSaved: false,
   secretStorage: null,
   toast: null,
+  hydrated: false,
   set: (patch) => {
     set(patch)
     schedulePersist(get())
@@ -207,18 +190,84 @@ export const useStudio = create<StudioState>((set, get) => ({
     schedulePersist(get())
   },
   addProject: (project) => {
-    set({ projects: [...get().projects, project], activeProjectId: project.id })
+    const exists = get().projects.find((item) => item.path === project.path)
+    if (exists) {
+      set({ activeProjectId: exists.id, projects: get().projects.map((item) => (item.id === exists.id ? { ...item, ...project, id: exists.id } : item)) })
+    } else {
+      set({ projects: [project, ...get().projects], activeProjectId: project.id })
+    }
+    schedulePersist(get())
+  },
+  removeProject: (id) => {
+    const projects = get().projects.filter((project) => project.id !== id)
+    const threads = get().threads.filter((thread) => thread.projectId !== id)
+    const activeProjectId = get().activeProjectId === id ? (projects[0]?.id ?? null) : get().activeProjectId
+    const nextThread = threads.find((thread) => thread.projectId === activeProjectId) ?? null
+    set({
+      projects,
+      threads,
+      activeProjectId,
+      activeThreadId: nextThread?.id ?? null,
+      messages: nextThread?.messages ?? [],
+      agentId: nextThread?.agentId ?? get().agentId,
+    })
+    schedulePersist(get())
+  },
+  addThread: (thread) => {
+    set({
+      threads: [thread, ...get().threads],
+      activeThreadId: thread.id,
+      activeProjectId: thread.projectId,
+      messages: thread.messages,
+      agentId: thread.agentId,
+      mode: 'chat',
+    })
+    schedulePersist(get())
+  },
+  selectThread: (id) => {
+    const thread = get().threads.find((item) => item.id === id)
+    if (!thread) return
+    set({ activeThreadId: id, activeProjectId: thread.projectId, messages: thread.messages, agentId: thread.agentId })
+    schedulePersist(get())
+  },
+  patchThread: (id, patch) => {
+    const threads = get().threads.map((thread) => (thread.id === id ? { ...thread, ...patch, updatedAt: Date.now() } : thread))
+    const active = threads.find((thread) => thread.id === get().activeThreadId)
+    set({
+      threads,
+      ...(active && id === active.id ? { messages: active.messages, agentId: active.agentId } : {}),
+    })
+    schedulePersist(get())
+  },
+  removeThread: (id) => {
+    const threads = get().threads.filter((thread) => thread.id !== id)
+    if (get().activeThreadId !== id) {
+      set({ threads })
+      schedulePersist(get())
+      return
+    }
+    const projectId = get().activeProjectId
+    const next = threads.find((thread) => thread.projectId === projectId) ?? null
+    set({
+      threads,
+      activeThreadId: next?.id ?? null,
+      messages: next?.messages ?? [],
+      agentId: next?.agentId ?? get().agentId,
+    })
     schedulePersist(get())
   },
   addMessage: (message) => {
-    set({ messages: [...get().messages, message] })
+    const messages = [...get().messages, message]
+    set(withThreadMessages(get(), messages, message))
     schedulePersist(get())
   },
   patchMessage: (id, patch) => {
-    set({ messages: get().messages.map((message) => (message.id === id ? { ...message, ...patch } : message)) })
+    const messages = get().messages.map((message) => (message.id === id ? { ...message, ...patch } : message))
+    set(withThreadMessages(get(), messages, null))
+    schedulePersist(get())
   },
   clearMessages: () => {
-    set({ messages: [] })
+    set(withThreadMessages(get(), [], null))
     schedulePersist(get())
   },
   upsertRun: (run) => {
@@ -233,15 +282,43 @@ export const useStudio = create<StudioState>((set, get) => ({
   patchNode: (runId, nodeId, patch) => {
     set({
       runs: get().runs.map((run) =>
-        run.id !== runId
-          ? run
-          : { ...run, nodes: run.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)) },
+        run.id !== runId ? run : { ...run, nodes: run.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)) },
       ),
     })
   },
+  applySnapshot: (snapshot) => {
+    const view = viewFrom(normalizeSnapshot(snapshot))
+    set({ ...view, hydrated: true })
+  },
 }))
 
-export function activeProject(): Project {
+export function activeProject(): Project | null {
   const state = useStudio.getState()
-  return state.projects.find((project) => project.id === state.activeProjectId) ?? state.projects[0]
+  if (!state.activeProjectId) return null
+  return state.projects.find((project) => project.id === state.activeProjectId) ?? null
+}
+
+export function activeThread(): Thread | null {
+  const state = useStudio.getState()
+  if (!state.activeThreadId) return null
+  return state.threads.find((thread) => thread.id === state.activeThreadId) ?? null
+}
+
+let hydrateOnce: Promise<void> | null = null
+
+export function hydrateStudio(): Promise<void> {
+  if (!hydrateOnce) {
+    hydrateOnce = (async () => {
+      if (window.studio) {
+        try {
+          const disk = await window.studio.loadState()
+          if (disk) useStudio.getState().applySnapshot(disk)
+        } catch {
+          /* keep local */
+        }
+      }
+      useStudio.setState({ hydrated: true })
+    })()
+  }
+  return hydrateOnce
 }
