@@ -1,0 +1,17 @@
+{
+    "info": {
+        "name": "__TITLE__",
+        "author": "__AUTHOR__",
+        "website": "",
+        "description": ""
+    },
+    "config": {
+        "numrow": "5"
+    },
+    "datafunction": "nv_block_config___MODULE___latest",
+    "submitfunction": "nv_block_config___MODULE___latest_submit",
+    "i18n": {
+        "vi": { "info": { "name": "Mới nhất" } },
+        "en": { "info": { "name": "Latest" } }
+    }
+}

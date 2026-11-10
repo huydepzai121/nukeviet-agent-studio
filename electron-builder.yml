@@ -1,0 +1,33 @@
+appId: vn.nukeviet.agentstudio
+productName: NukeViet Agent Studio
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: agents/dist
+    to: agents
+  - from: knowledge
+    to: knowledge
+  - from: templates
+    to: templates
+asar: true
+win:
+  target:
+    - nsis
+    - portable
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
